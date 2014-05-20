@@ -1,0 +1,39 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android" >
+    
+    <item
+        android:id="@+id/menu_next_image_detection_filter"
+        android:orderInCategory="100"
+        android:title="@string/menu_next_image_detection_filter"
+        android:showAsAction="always|withText" />
+
+    <item
+        android:id="@+id/menu_next_curve_filter"
+        android:orderInCategory="100"
+        android:title="@string/menu_next_curve_filter"
+        android:showAsAction="ifRoom|withText" />
+    
+    <item
+        android:id="@+id/menu_next_mixer_filter"
+        android:orderInCategory="100"
+        android:title="@string/menu_next_mixer_filter"
+        android:showAsAction="ifRoom|withText" />
+    
+    <item
+        android:id="@+id/menu_next_convolution_filter"
+        android:orderInCategory="100"
+        android:title="@string/menu_next_convolution_filter"
+        android:showAsAction="ifRoom|withText" />
+    
+    <item
+        android:id="@+id/menu_next_camera"
+        android:orderInCategory="100"
+        android:title="@string/menu_next_camera"
+        android:showAsAction="ifRoom|withText" />
+    
+    <item
+        android:id="@+id/menu_take_photo"
+        android:orderInCategory="100"
+        android:title="@string/menu_take_photo"
+        android:showAsAction="always|withText" />
+
+</menu>
