@@ -6,15 +6,15 @@ import java.util.List;
 
 import org.opencv.android.Utils;
 import org.opencv.calib3d.Calib3d;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfDMatch;
-import org.opencv.core.MatOfDouble;
 import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
-import org.opencv.core.MatOfPoint3f;
 import org.opencv.core.Point;
-import org.opencv.core.Point3;
+import org.opencv.core.Scalar;
 import org.opencv.features2d.DMatch;
 import org.opencv.features2d.DescriptorExtractor;
 import org.opencv.features2d.DescriptorMatcher;
@@ -24,9 +24,9 @@ import org.opencv.highgui.Highgui;
 import org.opencv.imgproc.Imgproc;
 
 import android.content.Context;
-import fhv.s3secondsight.adapters.CameraProjectionAdapter;
+import fhv.s3secondsight.filters.Filter;
 
-public class ImageDetectionFilter implements ARFilter {
+public class ImageDetectionFilter implements Filter {
 
 	private final Mat mReferenceImage;
 	private final MatOfKeyPoint mReferenceKeypoints = new MatOfKeyPoint();
@@ -35,7 +35,9 @@ public class ImageDetectionFilter implements ARFilter {
 	
 	private final MatOfKeyPoint mSceneKeypoints = new MatOfKeyPoint();
 	private final Mat mSceneDescriptors = new Mat();
+	private final Mat mCandidateSceneCorners = new Mat(4, 1, CvType.CV_32FC2);
 	private final Mat mSceneCorners = new Mat(4, 1, CvType.CV_32FC2);
+	private final MatOfPoint mIntSceneCorners = new MatOfPoint();
 	
 	private final Mat mGraySrc = new Mat();
 	private final MatOfDMatch mMatches = new MatOfDMatch();
@@ -43,17 +45,10 @@ public class ImageDetectionFilter implements ARFilter {
 	private final FeatureDetector mFeatureDetector = FeatureDetector.create(FeatureDetector.STAR);
 	private final DescriptorExtractor mDescriptorExtractor = DescriptorExtractor.create(DescriptorExtractor.FREAK);
 	private final DescriptorMatcher mDescriptorMatcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
-		
-	private final MatOfDouble mDistCoeffs = new MatOfDouble(0.0, 0.0, 0.0, 0.0);
-	private final CameraProjectionAdapter mCameraProjectionAdapter;
-	private final MatOfDouble mRVec = new MatOfDouble();
-	private final MatOfDouble mTVec = new MatOfDouble();
-	private final MatOfDouble mRotation = new MatOfDouble();
-	private final float[] mGLPose = new float[16];
 	
-	private boolean mTargetFound = false;
+	private final Scalar mLineColor = new Scalar(0, 255, 0);
 	
-	public ImageDetectionFilter(final Context context, final int referenceImageResourceID, final CameraProjectionAdapter cameraProjectionAdapter) throws IOException {
+	public ImageDetectionFilter(final Context context, final int referenceImageResourceID) throws IOException {
 		mReferenceImage = Utils.loadResource(context, referenceImageResourceID, Highgui.CV_LOAD_IMAGE_COLOR);
 		
 		final Mat referenceImageGray = new Mat();
@@ -67,8 +62,6 @@ public class ImageDetectionFilter implements ARFilter {
 		
 		mFeatureDetector.detect(referenceImageGray, mReferenceKeypoints);
 		mDescriptorExtractor.compute(referenceImageGray, mReferenceKeypoints, mReferenceDescriptors);
-		
-		mCameraProjectionAdapter = cameraProjectionAdapter;
 	}
 	
 	@Override
@@ -79,11 +72,11 @@ public class ImageDetectionFilter implements ARFilter {
 		mDescriptorExtractor.compute(mGraySrc, mSceneKeypoints, mSceneDescriptors);
 		mDescriptorMatcher.match(mSceneDescriptors, mReferenceDescriptors, mMatches);
 		
-		findPose();
+		findSceneCorners();
 		draw(src, dst);
 	}
 	
-	private void findPose() {
+	private void findSceneCorners() {
 		
 		List<DMatch> matchesList = mMatches.toList();
 		if (matchesList.size() < 4) {
@@ -111,14 +104,12 @@ public class ImageDetectionFilter implements ARFilter {
 		} else if (minDist > 25.0) {
 			return;
 		}
-		ArrayList<Point3> goodReferencePointsList = new ArrayList<Point3>();
+		ArrayList<Point> goodReferencePointsList = new ArrayList<Point>();
 		ArrayList<Point> goodScenePointsList = new ArrayList<Point>();
 		double maxGoodMatchDist = 1.75 * minDist;
 		for (DMatch match : matchesList) {
 			if (match.distance < maxGoodMatchDist) {
-				Point point = referenceKeypointsList.get(match.trainIdx).pt;
-				Point3 point3 = new Point3(point.x, point.y, 0.0);
-				goodReferencePointsList.add(point3);
+				goodReferencePointsList.add(referenceKeypointsList.get(match.trainIdx).pt);
 				goodScenePointsList.add(sceneKeypointsList.get(match.queryIdx).pt);
 			}
 		}
@@ -127,42 +118,19 @@ public class ImageDetectionFilter implements ARFilter {
 			return;
 		}
 		
-		MatOfPoint3f goodReferencePoints = new MatOfPoint3f();
+		MatOfPoint2f goodReferencePoints = new MatOfPoint2f();
 		goodReferencePoints.fromList(goodReferencePointsList);
 		
 		MatOfPoint2f goodScenePoints = new MatOfPoint2f();
 		goodScenePoints.fromList(goodScenePointsList);
 		
-		MatOfDouble projection = mCameraProjectionAdapter.getProjectionCV();
-		Calib3d.solvePnP(goodReferencePoints, goodScenePoints, projection, mDistCoeffs, mRVec, mTVec);
+		Mat homography = Calib3d.findHomography(goodReferencePoints, goodScenePoints);
+		Core.perspectiveTransform(mReferenceCorners, mCandidateSceneCorners, homography);
 		
-		double[] rVecArray = mRVec.toArray();
-		rVecArray[1] *= -1.0;
-		rVecArray[2] *= -1.0;
-		mRVec.fromArray(rVecArray);
-		
-		Calib3d.Rodrigues(mRVec, mRotation);
-		
-		double[] tVecArray = mTVec.toArray();
-		
-		mGLPose[0] = (float)mRotation.get(0, 0)[0];
-		mGLPose[1] = (float)mRotation.get(1, 0)[0];
-		mGLPose[2] = (float)mRotation.get(2, 0)[0];
-		mGLPose[3] = 0f;
-		mGLPose[4] = (float)mRotation.get(0, 1)[0];
-		mGLPose[5] = (float)mRotation.get(1, 1)[0];
-		mGLPose[6] = (float)mRotation.get(2, 1)[0];
-		mGLPose[7] = 0f;
-		mGLPose[8] = (float)mRotation.get(0, 2)[0];
-		mGLPose[9] = (float)mRotation.get(1, 2)[0];
-		mGLPose[10] = (float)mRotation.get(2, 2)[0];
-		mGLPose[11] = 0f;
-		mGLPose[12] = (float)tVecArray[0];
-		mGLPose[13] = (float)tVecArray[1];
-		mGLPose[14] = (float)tVecArray[2];
-		mGLPose[15] = 1f;
-		
-		mTargetFound = true;
+		mCandidateSceneCorners.convertTo(mIntSceneCorners, CvType.CV_32S);
+		if (Imgproc.isContourConvex(mIntSceneCorners)) {
+			mCandidateSceneCorners.copyTo(mSceneCorners);
+		}
 	}
 	
 	protected void draw (Mat src, Mat dst) {
@@ -189,11 +157,10 @@ public class ImageDetectionFilter implements ARFilter {
 			return;
 		}
 		
-	}
-	
-	@Override
-	public float[] getGLPose() {
-		return (mTargetFound ? mGLPose : null);
+		Core.line(dst, new Point(mSceneCorners.get(0, 0)), new Point(mSceneCorners.get(1, 0)), mLineColor, 4);
+		Core.line(dst, new Point(mSceneCorners.get(1, 0)), new Point(mSceneCorners.get(2, 0)), mLineColor, 4);
+		Core.line(dst, new Point(mSceneCorners.get(2, 0)), new Point(mSceneCorners.get(3, 0)), mLineColor, 4);
+		Core.line(dst, new Point(mSceneCorners.get(3, 0)), new Point(mSceneCorners.get(0, 0)), mLineColor, 4);
 	}
 	
 }

@@ -20,12 +20,9 @@ import android.support.v4.app.FragmentActivity;
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
 import android.content.Intent;
-import android.graphics.PixelFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.CameraInfo;
-import android.hardware.Camera.Parameters;
 import android.net.Uri;
-import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
@@ -36,12 +33,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.FrameLayout;
 import android.widget.Toast;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.provider.MediaStore.Images;
-import fhv.s3secondsight.adapters.CameraProjectionAdapter;
 import fhv.s3secondsight.filters.*;
 import fhv.s3secondsight.filters.convolution.*;
 import fhv.s3secondsight.filters.curve.*;
@@ -64,7 +59,7 @@ public class CameraActivity extends FragmentActivity implements CvCameraViewList
 	private static final String STATE_CURVE_FILTER_INDEX = "curveFilterIndex";
 	private static final String STATE_MIXER_FILTER_INDEX = "mixerFilterIndex";
 	private static final String STATE_CONVOLUTION_FILTER_INDEX = "convolutionFilterIndex";
-	private ARFilter[] mImageDetectionFilters;
+	private Filter[] mImageDetectionFilters;
 	private Filter[] mCurveFilters;
 	private Filter[] mMixerFilters;
 	private Filter[] mConvolutionFilters;
@@ -72,9 +67,6 @@ public class CameraActivity extends FragmentActivity implements CvCameraViewList
 	private int mCurveFilterIndex;
 	private int mMixerFilterIndex;
 	private int mConvolutionFilterIndex;
-	
-	private CameraProjectionAdapter mCameraProjectionAdapter;
-	private ARCubeRenderer mARRenderer;
 	
 	private BaseLoaderCallback mLoaderCallback =
 			new BaseLoaderCallback(this){
@@ -86,26 +78,26 @@ public class CameraActivity extends FragmentActivity implements CvCameraViewList
 					mCameraView.enableView();
 					mBgr = new Mat();
 					
-					final ARFilter starryNight;
+					final Filter starryNight;
 					try {
-						starryNight = new ImageDetectionFilter(CameraActivity.this, R.drawable.starry_night, mCameraProjectionAdapter);
+						starryNight = new ImageDetectionFilter(CameraActivity.this, R.drawable.starry_night);
 					} catch (IOException e) {
 						Log.e(TAG, "Failed to load drawable: starry_night");
 						e.printStackTrace();
 						break;
 					}
 					
-					final ARFilter akbarHunting;
+					final Filter akbarHunting;
 					try {
-						akbarHunting = new ImageDetectionFilter(CameraActivity.this, R.drawable.akbar_hunting_with_cheetahs, mCameraProjectionAdapter);
+						akbarHunting = new ImageDetectionFilter(CameraActivity.this, R.drawable.akbar_hunting_with_cheetahs);
 					} catch (IOException e) {
 						Log.e(TAG, "Failed to load drawable: akbar hunting");
 						e.printStackTrace();
 						break;
 					}
 					
-					mImageDetectionFilters = new ARFilter[] {
-							new NoneARFilter(),
+					mImageDetectionFilters = new Filter[] {
+							new NoneFilter(),
 							starryNight, 
 							akbarHunting
 					};
@@ -157,34 +149,6 @@ public class CameraActivity extends FragmentActivity implements CvCameraViewList
         	mConvolutionFilterIndex = 0;
         }
         
-        mCameraView = new NativeCameraView(this, mCameraIndex);
-        mCameraView.setCvCameraViewListener(this);
-        setContentView(mCameraView);
-        
-        FrameLayout layout = new FrameLayout(this);
-        layout.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        setContentView(layout);
-        
-        mCameraView = new NativeCameraView(this, mCameraIndex);
-        mCameraView.setCvCameraViewListener(this);
-        mCameraView.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        layout.addView(mCameraView);
-        
-        GLSurfaceView glSurfaceView = new GLSurfaceView(this);
-        glSurfaceView.getHolder().setFormat(PixelFormat.TRANSPARENT);
-        glSurfaceView.setEGLConfigChooser(8, 8, 8, 8, 0, 0);
-        glSurfaceView.setZOrderOnTop(true);
-        glSurfaceView.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        layout.addView(glSurfaceView);
-        
-        mCameraProjectionAdapter = new CameraProjectionAdapter();
-        
-        mARRenderer = new ARCubeRenderer();
-        mARRenderer.cameraProjectionAdapter = mCameraProjectionAdapter;
-        glSurfaceView.setRenderer(mARRenderer);
-        
-        final Camera camera;
-        
         if (Build.VERSION.SDK_INT >=
         		Build.VERSION_CODES.GINGERBREAD) {
         	CameraInfo cameraInfo = new CameraInfo();
@@ -193,15 +157,14 @@ public class CameraActivity extends FragmentActivity implements CvCameraViewList
         			(cameraInfo.facing == 
         			CameraInfo.CAMERA_FACING_FRONT);
         	mNumCameras = Camera.getNumberOfCameras();
-        	camera = Camera.open(mCameraIndex);
         } else {
         	mIsCameraFrontFacing = false;
         	mNumCameras = 1;
-        	camera = Camera.open();
         }
-        final Parameters parameters = camera.getParameters();
-        mCameraProjectionAdapter.setCameraParameters(parameters);
-        camera.release();
+        
+        mCameraView = new NativeCameraView(this, mCameraIndex);
+        mCameraView.setCvCameraViewListener(this);
+        setContentView(mCameraView);
     }
 	
 	public void onSaveInstanceState(Bundle savedInstanceState) {
